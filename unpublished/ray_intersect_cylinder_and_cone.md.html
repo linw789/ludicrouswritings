@@ -1,0 +1,481 @@
+                **Intersect Ray with Cylinder and Cone**
+
+Recently I was tasked to write code for detecting intersection between a ray and
+various shapes, two of which are cylinder and cone. I want to take this chance
+to write down some of the details that are not readily obvious and took me some
+time to get right.
+
+# Ray Cylinder Intersection 
+
+Let's define a capped cylinder by a point $ A $ that's the center of one end
+and $ D_c $ as the unit-length direction from $ A $ to the center of the other
+end, and $ h, \, r $ as the height and the radius of the cylinder respectively.
+We define a ray with its origin at $ Q $ and unit-length direction $ D_r $. (In
+the book Real-Time Collision Detection, though he mentioned it, the author
+didn't use unit-length direction to represent cylinder and ray.)
+
+![Ray Cylinder Intersection, Figure 1](..\graphs\intersect_ray_cylinder_00.png)
+
+We can express any point on the ray using explicit line equation with the
+parameter $ t $: 
+
+$$ PR(t) = Q + tD_r \,|\, t >= 0 $$ 
+
+If we ignore the height of the cylinder for now, we can represent any point 
+$ PC $ on the surface of the cylinder implicitly based on the definition of the
+cylinder which is, according to Wikipedia, "the surface formed by the points at
+a fixed distance from a given straight line called the axis of the cylinder": 
+
+$$ |PC - (A + ((PC - A)\cdot D_c)D_c)| = r $$
+
+The equation above is simply saying the distance between the point $ PC $ and
+its projection onto the cylinder axis equals $ r $.
+
+To get interseting points of the ray and the cylinder, we substitute $ PR(t) $
+for $ PC $:
+
+$$ |PR(t) - (A + ((PR(t)-A)\cdot D_c)D_c)| = r $$
+
+Expand the equation:
+
+\begin{equation}
+|Q + tD_r - A - ((Q + tD_r - A)\cdot D_c)D_c| = r
+\end{equation}
+
+\begin{equation}
+|\vec{AQ} + tD_r - ((\vec{AQ} + tD_r)\cdot D_c)D_c| = r
+\end{equation}
+
+\begin{equation}
+|\vec{AQ} + tD_r - (\vec{AQ}\cdot D_c + tD_r\cdot D_c)D_c| = r
+\end{equation}
+
+Assume $ m = \vec{AQ}\cdot D_c \,,\quad k = D_r\cdot D_c $
+
+\begin{equation}
+|\vec{AQ} + tD_r - (m + kt)D_c| = r
+\end{equation}
+
+\begin{equation}
+(\vec{AQ} + tD_r - (m + kt)D_c)^2 = r^2
+\end{equation}
+
+\begin{equation}
+(\vec{AQ} + tD_r)^2 - 2(m + kt)((\vec{AQ} + tD_r)\cdot D_c) + (m+kt)^2 D_c^2 = r^2
+\end{equation}
+
+Because $ D_r \,,\, D_c $ are unit length, $ D_r^2 = D_c^2 = 1 $.
+
+\begin{equation}
+(\vec{AQ})^2 + 2(\vec{AQ}\cdot D_r)t + t^2 - 2(m + kt)(\vec{AQ}\cdot D_c + tD_r\cdot D_c) + (m+kt)^2 = r^2
+\end{equation}
+
+Let $ n = \vec{AQ}\cdot D_r \,,\, q^2 = (\vec{AQ})^2 $
+
+\begin{equation}
+q^2 + 2nt + t^2 - 2(m + kt)(m + kt) + (m+kt)^2 = r^2
+\end{equation}
+
+\begin{equation}
+q^2 + 2nt + t^2 - (m+kt)^2 = r^2
+\end{equation}
+
+\begin{equation}
+(1 - k^2)t^2 + 2(n - mk)t + q^2 - m^2 - r^2 = 0;
+\end{equation}
+
+This is a quadratic equation of variable $ t $, and there could be two real
+roots which can be calculated as following
+
+$$ t = \dfrac{-b + \sqrt{b^2 - ac}}{a} $$
+
+where $ a = 1 - k^2 \,,\, b = n - mk \,,\, c = q^2 - m^2 - r^2 $. Note, the
+linear coefficient is $ 2b $.
+
+Now we want to know how many real roots the quadratic equation has. First, let's
+look at $ a $ which is $ 1 - k^2 $. Because we define that $ D_c \,,\, D_r $ are
+unit length, we know if $ a = 0 $ then $ D_c \,,\, D_r $ are parallel.
+Geometrically, because we know what a cylinder looks like and what a ray is, we
+can easily see that if the ray is parallel to the cylinder axis and overlapping
+with the cylinder surface, there is an infinite amount of intersecting points.
+But the question is how we could come to the same conclusion without knowing
+what a cylinder is. Put it another way, how do we know that the equation (10)
+has an infinite amount of real roots? And the answer is when both coefficients
+and the constant are zero. 
+
+$$ 0t^2 + 0t + 0 = 0 $$
+
+Yes, it's really obvious after you realize it. This also could help verify our
+math deduction, which you will see later in Ray Cone Intersection section.
+
+Before we proceed, we should eliminate some obvious cases where the ray is not
+going to intersect with the cylinder. To save some typing, let's call the
+cylinder end where point $ A $ is at EndA and the other end EndB.
+
+![Ray Cylinder Intersection, Figure 2](..\graphs\intersect_ray_cylinder_02.png)  
+
+- If $ m < 0 \wedge k < 0 $. This is to say that the ray origin is outside on
+  EndA and the ray is shooting away from EndA. 
+
+- If $ m > h \wedge k > 0 $. This is to say that the ray origin is outside on
+  EndB and the ray is shooting away from EndB.
+
+Back to the quadratic coefficient $ a $, when $ a = 0 $ we want to know if the
+ray if inside, outside or touching the cylinder, which is to test the distance
+between the cylinder axis and the ray against the cylinder radius. Luckily, 
+that's exactly what $ c \, (q^2-m^2-r^2) $ is. 
+
+![Ray Cylinder Intersection, Figure 3](..\graphs\intersect_ray_cylinder_01.png)  
+
+$ q^2 = (\vec{AQ})^2 \,,\, m^2 = (\vec{AQ}\cdot D_c)^2 = (\vec{AS})^2 $, the
+squared distance is $ |SQ|^2 = q^2 - m^2 $. We then could just compare $ c $ to
+zero. But because we are testing for intersection between a capped cylinder and
+a ray instead of an infinite long cylinder and a line, we have to consider many
+more cases. Let's get to them one by one. 
+
+- If $ c > 0 $. The ray is outside the cylinder, we don't have any intersection.
+
+- If $ c <= 0 $. Conflate the cases of touching and inside, because they make no
+  difference as far as intersecting point is concerned in our case. If there is
+  an infinite amount of intersecting points, we take the entering one (when the
+  ray origin is not inside the cylinder) and the exiting one. Now we want to know
+  where the ray origin is regarding two ends of the cylinder and also which way
+  the ray is shooting. 
+
+    - If $ m = 0 \wedge k < 0 $. The ray origin is on EndA and the ray is
+      shooting away from EndA, $ t = 0 $.
+
+    - If $ m <= 0 $. The ray origin is outside or on the EndA, and the ray must
+      be shooting towards EndB, because otherwise we would have already
+      considered the case. We have two intersecting points, one entering EndA 
+      ( $ t_1 = -m $ ), the other exiting EndB ( $ t_2 = -m + h $ ).
+
+    - If $ m = h \wedge k > 0 $. The ray origin is on EndB and the ray is
+      shooting away from EndB, $ t = h $.
+
+    - If $ m >= h $. The ray origin is outside or on the EndB, and the ray must
+      be shooting towards EndA. We have two intersecting points, one entering
+      EndB ( $ t_1 = m - h $ ), the other exiting EndA ( $ t_2 = m $ ).
+
+    - If $ 0 < m < h $. The ray origin is in between two ends, so there is only 
+      one intersecting point, the exiting one. If the ray is shooting towards 
+      EndA $ t = m $, otherwise $ t = h - m $.
+
+Done with the quadratic coefficient, we are going to deal with the determinant 
+$ b^2 - ac $. If the determinant is smaller than zero, there exists no
+intersecting point. If the determinant is zero, the ray is touching the
+cylinder surface tagentially only at one point $ t = \dfrac{-b}{a} $. Else the 
+ray goes through the cylinder resulting in two intersecting points 
+$ t_1 = \dfrac{-b-\sqrt{b^2-ac}}{a} \,,\, t_2 = \dfrac{-b+\sqrt{b^2-ac}}{a} $. 
+Again, the extra complexity arise from height constraint put on the cylinder and 
+direction constraint on the line. 
+
+![Ray Cylinder Intersection, Figure 4](..\graphs\intersect_ray_cylinder_03.png)
+
+Figure 4 shows 11 possible positions and orientations a line could be placed
+relative to a cylinder. As a matter of fact, due to the symmetry of the cylinder
+shape, those 11 cases are exhaustive for our purpose. To enumerate all of them, 
+it's much easier to do in code than English.
+
+~~~~~~cpp
+/* a is the quadratic coefficient, 2b the linear coefficient, c the constant */
+b2 = b * b;
+ac = a * c;
+/* two potential real roots */
+tt1 = (-b - sqrt(b2 - ac)) / a;
+tt2 = (-b + sqrt(b2 - ac)) / a;
+
+if (tt1 < 0 && tt2 < 0) { /* both intersections are behind the ray origin */
+    return no_intersection;
+}
+
+/* In subsequent tests, tt2 >= 0 must hold. 
+   If there is only one intersecting point, store the parameter in t1. */
+
+/* vector from point A to intersecting point of parameter t2 
+   s2 = dot(Dc, Q + tt2 * Dr - A) */
+s2 = m + tt2 * k; 
+
+if (tt1 == tt2) { /* the ray is touching the cylinder surface at one point */
+    if (s2 < 0 || s2 > h) { 
+        return no_intersection;
+    } else {
+        t1 = tt1;
+        return one_intersection;
+    }
+}
+
+/* vector from point A to intersecting point of parameter t1 
+   s1 = dot(Dc, Q + tt2 * Dr - A) */
+s1 = m + tt1 * k;
+
+if (s1 < 0) { /* four red lines */ 
+    if (s2 < 0) { /* line c1 or c4 */
+        return no_intersection;
+    } else if (s2 == 0) { /* the ray touches the edge of EndA */
+        t1 = tt2;
+        return one_intersection;
+    } else {
+        t1 = -m / k; /* the point on EndA, dot(Q + t1 * Dr - A, Dc) = 0 */
+        if (s2 > h) { /* line c3 */ 
+            t2 = (h - m) / k; /* the point on EndB, dot(Q + t1 * Dr - A, Dc) = h */
+        } else { /* line c2 */
+            t2 = tt2;
+        }
+        if (m <= 0) { /* ray origin Q is outside the cylinder */
+            return two_intersections;
+        } else {
+            t1 = t2;
+            return one_intersection_origin_inside;
+        }
+    }
+} else if (s1 > h) { /* four green lines */
+    if (s2 > h) { /* line c11 or c8 */
+        return no_intersection;
+    } else if (s2 == h) { /* the ray touches the edge of EndB */
+        t1 = tt2;
+        return one_intersection;
+    } else {
+        t1 = (h - m) / k;
+        if (s2 > h) { /* line c9 */
+            t2 = -m / k;
+        } else { /* line c10 */ 
+            t2 = tt2;
+        }
+        if (m >= h) { /* ray origin Q is outside the cylinder */
+            return two_intersections;
+        } else {
+            t1 = t2;
+            return one_intersection_origin_inside;
+        }
+    }
+} else { /* three blue lines */
+    if ((s1 == 0 && s2 < 0) || (s1 == h && s2 > h)) { /* line c4 or c8 */
+        t1 = tt1;
+        return one_intersection;
+    } else {
+        if (s2 < 0) { /* line c5 */
+            t2 = -m / k;
+        } else if (s2 > h) { /* line c7 */
+            t2 = (h - m)/ k;
+        } else { /* line c6 */
+            t2 = tt2;
+        }
+        if (t1 >= 0) { 
+            t1 = tt1;
+            return two_intersections;
+        } else { /* Q is inside the cylinder */
+            t1 = t2;
+            return one_intersection_origin_inside;
+        }
+    }
+}
+~~~~~~
+
+That's it. That's all the cases you need to test for detecting ray cylinder
+intersection. However, I didn't address the floating point comparison issue
+which is essential to building a robust test routine, because I myself still
+need to learn how to do it correctly.
+
+# Ray Cone Intersection
+
+Testing for ray cone intersection and testing for ray cylinder intersection are
+very similar in that they both boil down to solving a quadratic equation.
+Furthermore they also share the same constraints that increases the
+implementation complexity.
+
+![Ray Cone Intersection, Figure 5](..\graphs\intersect_ray_cone_00.png)
+
+Assume a ray's origin is at $ Q $, it has the unit-length direction $ D_r $,
+and a cone with its apex $ A $, unit-length direction from the apex to the base 
+$ D_c $, the cone's height and radius are $ h, r $ respectively. A point on the 
+ray can be represented as $ P = Q + tD_r $. Based on Similar Triangle Property:
+
+$$ \dfrac{|(P-A)\cdot D_c|}{h} = \dfrac{|(P-A)-((P-A)\cdot D_c)D_c|}{r} $$
+
+\begin{equation}
+|(P-A)\cdot D_c|^2 r^2 = |(P-A)-((P-A)\cdot D_c)D_c|^2 h^2
+\end{equation}
+
+\begin{equation}
+|(Q+tD_r-A)\cdot D_c|^2 r^2 = |(Q+tD_r-A)-((Q+tD_r-A)\cdot D_c)D_c|^2 h^2
+\end{equation}
+
+\begin{equation}
+|(\vec{AQ}+tD_r)\cdot D_c|^2 r^2 = |\vec{AQ}+tD_r-((\vec{AQ}+tD_r)\cdot D_c)D_c|^2 h^2
+\end{equation}
+
+\begin{equation}
+|\vec{AQ}\cdot D_c + tD_r\cdot D_c|^2 r^2 = |\vec{AQ}+tD_r-(\vec{AQ}\cdot D_c + tD_r\cdot D_c)D_c|^2 h^2
+\end{equation}
+
+let $ m = \vec{AQ}\cdot D_c $ and $ k = D_r \cdot D_c $ 
+
+\begin{equation}
+(m + kt)^2 r^2 = (\vec{AQ}+tD_r-(m + kt)D_c)^2 h^2
+\end{equation}
+
+\begin{equation}
+(m + kt)^2 r^2 = (\vec{AQ}-mD_c +t(D_r-kD_c))^2 h^2
+\end{equation}
+
+\begin{equation}
+(m^2 + 2mkt + k^2t^2) r^2 = [(\vec{AQ}-mD_c)^2 + 2(\vec{AQ}-mD_c)\cdot (D_r+kD_c)t + (D_r-kD_c)^2 t^2] h^2
+\end{equation}
+
+\begin{equation}
+(m^2 + 2mkt + k^2t^2) r^2 = [((\vec{AQ})^2 - 2m(\vec{AQ}\cdot D_c) + m^2 D_c^2 + 2(\vec{AQ}\cdot D_r - m(D_c \cdot D_r) + k\vec{AQ}\cdot D_c - mkD_c^2)t + (D_r^2 - 2k(D_r \cdot D_c) + k^2D_c^2)t^2] h^2
+\end{equation}
+
+let $ n = \vec{AQ}\cdot D_r \, , \, q = |\vec{AQ}| $
+
+\begin{equation}
+(m^2 + 2mkt + k^2t^2) r^2 = [(q^2 - 2m^2 + m^2 + 2(n - mk + km - mk)t + (1 - 2k^2 + k^2)t^2] h^2
+\end{equation}
+
+\begin{equation}
+(m^2 + 2mkt + k^2t^2) r^2 = [(q^2 - m^2 + 2(n - mk)t + (1 - k^2)t^2] h^2
+\end{equation}
+
+\begin{equation}
+(k^2 r^2 - h^2 + k^2 h^2)t^2 + 2(mkr^2 + mkh^2 -nh^2)t + m^2 r^2 - q^2h^2 + m^2 h^2 = 0
+\end{equation}
+
+\begin{equation}
+[(r^2 + h^2)k^2 - h^2]t^2 + 2[(r^2 + h^2)mk -nh^2]t + (r^2 + h^2)m^2 - q^2h^2 = 0
+\end{equation}
+
+Before I did my own math deduction I searched online for references and found 
+that most of the relevant materials used angles to define cones, which was not 
+convenient for me. I chose to use radius and height instead, only to find 
+out it's the same final result, but much more involved. If we divide the 
+equation (22) by $ r^2 + h^2 $ on both sides, we reach the same final equation 
+as listed [here](http://lousodrome.net/blog/light/2017/01/03/intersection-of-a-ray-and-a-cone/).
+
+As I mentioned in the section Ray Cylinder Intersection, we can utilize the fact
+that when the ray is overlapping with the cone surface the coefficients and the
+constant of the equation all become zero, to verify the final equation.
+
+If the ray is overlapping with the cone surface, we know that the angle between
+the ray and the cone axis ought to be the same as that between a tangent line
+through the apex on the cone surface and the cone axis. This makes the
+quadratic coefficient zero as shown below.
+
+$$ \dfrac{h}{\sqrt{r^2+h^2}} = \cos\theta = D_r \cdot D_c $$
+$$ \Rightarrow \dfrac{h^2}{r^2+h^2} = k^2 $$
+
+Because the ray is overlapping with the cone surface, $ \vec{AQ} $ must be
+collinear with $ D_r $, which means the angle between $ \vec{AQ} $ and the cone
+axis is also the same as the one above. And therefore linear coefficient is
+zero.
+
+$$ mk = (\vec{AQ}\cdot D_c)(D_r\cdot D_c) = (|\vec{AQ}||D_c|\cos\theta)(|D_r||D_c|\cos\theta) = (|\vec{AQ}|\cos\theta)(\cos\theta) $$
+$$ n\dfrac{h^2}{r^2+h^2} = (\vec{AQ}\cdot D_r)\cos^2\theta = |\vec{AQ}|\cos^2\theta $$
+$$ \Rightarrow (r^2 + h^2)mk = nh^2 $$
+
+Finally, the constant is zero too thanks to the Pythagorean theorem.  
+
+Now we proved our deduction is correct, let's get on to the real deal and try
+to find the intersection.
+
+First, like we did for ray clinder intersection we eliminate obvious cases
+where the ray is not going to intersect with the cone.
+
+- Which is when $ (m < 0 \wedge k < 0) \vee (m > h \wedge k > 0) $, the ray
+  origin is outside the cone (above the apex or below the base) and is shooting
+  away from the cone, so there won't be any intersecting point.
+
+For the case where the ray is parallel to the cone surface, $ (a = 0) $, there
+are three general possibilities to test.
+
+~~~cpp
+r2 = r * r; h2 = h * h ;
+a = (r2 + h2) * k2 - h2;
+b = (r2 + h2) * m * k - n * h2;
+c = (r2 + h2) * m2 - q2 * h2;
+
+if (a == 0) {
+    if (b == 0 && c == 0) { // ray overlapping cone surface
+        // check where the ray origin is
+    } else { 
+        // The ray intersects the cone at only one point, 
+        // calculate the parameter t of that point.
+        t = (2 * b) / c;
+        // Calculate the projection of the vector from the apex to that
+        // intersecting point onto the cone direction.
+        // s = dot(Dc, Q + t * Dr - A)
+        s = m + t * k; 
+        if (s < 0.0f || s > h) {
+            return no_intersection;
+        } else if (s == h) {
+            if (m <= h) { // the ray origin not below the cone base
+                return one_intersection;
+            }
+        } else {
+            // check where the ray origin is
+        }   
+    }
+}
+~~~
+
+![Ray Cone Intersection, Figure 6](..\graphs\intersect_ray_cone_01.png)
+
+Another special case is when the ray intersects the cone at two same points, in
+other words the discriminant is zero, $ b^2 - ac = 0 $, for which there exist
+two possibilities.
+
+~~~cpp
+dicr = b * b - a * c;
+if (dicr == 0) {
+    if (n * n = q2) { // green lines in Figure 6, the ray goes through the apex
+        // ...
+    } else { // the ray touches a point on the cone surface tangentially
+        // ...
+    }
+}
+~~~
+
+What's left are the general cases, to test which we need to first calculate the 
+two real roots and compare the intersecting points' relative positions againt 
+the cone, which in turn can be split into three cases.
+
+~~~cpp
+sqrt_dicr = sqrt(dicr);
+tt1 = (-b - sqrt_dicr) / a;
+tt2 = (-b + sqrt_dicr) / a;
+
+if (tt1 < 0.0f && tt2 < 0.0f) { // bothe intersections are behind the ray origin
+    return no_intersection;
+}
+
+// Calculate the projection of the vectors from the apex to the intersecting 
+// points onto the cone direction.
+s1 = m + tt1 * k; 
+s2 = m + tt2 * k;
+
+if (s1 < 0.0f) { // two yellow lines
+    // ...
+} else if (s1 > h) { // three blue lines
+    // ...
+} else { // three red lines
+    // ...
+}
+~~~
+
+That's it for the ray cone intersection detection. I skipped many details
+because they are pretty much the same as we did for ray-cylinder intersection,
+such as testing whether the ray origin is inside the cone, which is trivial and
+boring.
+
+References:
+1. Real-Time Collision Detection - 5.3.7 Intersecting Ray or Segment Against Cylinder, and the book's errata
+2. Wikipedia: [Cylinder](https://en.wikipedia.org/wiki/Cylinder)
+3. Light is beautiful: [Intersection of a ray and a cone](http://lousodrome.net/blog/light/2017/01/03/intersection-of-a-ray-and-a-cone/)
+
+2017 July 08
+
+<!-- Markdeep: -->
+<style class="fallback">body{visibility:hidden;white-space:pre;font-family:monospace}</style>
+<script src="markdeep.min.js"></script>
+<script src="https://casual-effects.com/markdeep/latest/markdeep.min.js"></script>
+<script>window.alreadyProcessedMarkdeep||(document.body.style.visibility="visible")</script>

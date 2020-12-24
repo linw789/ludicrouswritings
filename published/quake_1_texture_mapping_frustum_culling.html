@@ -1,0 +1,162 @@
+                **Qauke 1 Texture Mapping and Frustum Culling**
+
+It has been 5 months since I wrote a [software renderer for quake 1](https://github.com/superCleo/quake-zero). 
+My plan was to write down everything I learned and implemented in that project,
+which obviously didn't happen because I was too lazy. And now I almost forget
+everything. I have to go back and dig through my own crappy code and esoteric 
+comments to find out what's actually going on. Also now I have other things to
+do, it's even less likely that plan will ever be finished. Instead I want to
+just write down two things that I learned and on which I couldn't find much 
+information online when I first studied the quake 1 source code. 
+
+(##) Texture Mapping
+
+Quake 1 was first released in 1996 when most home computers had RAM in
+mega-bytes. It's very hard to squeeze games like Quake 1 into only around 20
+mega-bytes and storing texture coordinates in every vertex was definitely not
+the best use of that scant memory. Instead, Quake 1 stores a pair of axes and
+offsets for every surface and calculates texture coordinates for vertices in
+each surface on the fly. 
+
+Imagine you stick a poster onto a wall. The pair of axes are unit vectors in
+world space overlapping two adjacent edges of the poster and they serve as two
+principle axes in poster's local space. And two offsets are projections of the
+poster's origin on the poster's two principle axes in world space respectively.
+
+![figure 1](graphs\quake_1_texture_mapping_00.png)
+
+Let's say we know the texture's u axis, v axis and the texture's origin in world
+space, we can calculate the texture coordinates of a vertex by projecting that
+vertex on to each axis respectively.
+
+```
+/* u_axis is in world space and has unit length, texture_origin is in world space */
+float u = vector3_dot(vertex_position - texture_origin, u_axis);
+
+/* above equation can be re-arranged into the following */
+float u = vector3_dot(vertex_position, u_axis) - vector3_dot(texture_origin, u_axis);
+   
+/* now we take u_offset = vector3_dot(texture_origin, u_axis) */
+float u = vector3_dot(vertex_position, u_axis) - u_offset;
+```
+
+We can at this point calculate texture coordinates of a vertex in world space.
+However, to do [perspective texture mapping](https://www.scratchapixel.com/lessons/3d-basic-rendering/rasterization-practical-implementation/perspective-correct-interpolation-vertex-attributes)
+we need to interpolate texture coordinates in view space and calculate stepping
+information there.
+
+Let's define $ U_{view} \; and \; U_{world} $ are texture's u axis in view space
+and world space respectively, and $ P_{view} \; and \; P_{world} $ are the
+positions of a vertex in view space and world space respectively and $ C $ is
+the camera's position in world space and $ R \; and \; T $ are the rotation and
+translation matrix of the camera. 
+
+(I will skip the proof of transforming directions and positions between world
+space and view space. And since dot product of 2 vectors can be seen as matrix
+multiplication between a one-row-three-column matrix and a three-row-one-column
+matrix, we use dot product indiscriminately for matrices and vectors. And we
+utilize associativiy of matrix multiplication for the following deduction.)
+
+\begin{equation*}
+U_{view} = R^{-1} \cdot U_{world} \\ 
+P_{view} = (R^{-1} \cdot T^{-1}) \cdot P_{world}  \\ 
+\end{equation*}
+
+\begin{equation*}
+\begin{split}
+U_{view} \cdot P_{view} & = (R^{-1} \cdot U_{world}) \cdot ((R^{-1} \cdot T^{-1}) \cdot P_{world}) \\
+& = (U_{world} \cdot (R^{-1})^T) \cdot ((R^{-1} \cdot T^{-1}) \cdot P_{world}) \\
+& = (U_{world} \cdot R) \cdot ((R^{-1} \cdot T^{-1}) \cdot P_{world}) \\
+& = U_{world} \cdot R \cdot R^{-1} \cdot T^{-1} \cdot P_{world} \\
+& = U_{world} \cdot (T^{-1} \cdot P_{world}) \\
+& = U_{world} \cdot (P_{world} - C) \\
+& = U_{world} \cdot P_{world} - U_{world} \cdot C \\
+\\ 
+u & = U_{world} \cdot P_{world} \\
+& = U_{view} \cdot P_{view} + U_{world} \cdot C \\
+\end{split}
+\end{equation*}
+
+(##) Frustum Culling
+
+To determine if an area is completely inside or outside of a camera's viewing
+frustum, Quake 1 tests the AABB (Axis Aligned Bounding Box) of the area against
+the frustum, which boils down to testing which side of each plane of the frustum 
+an AABB is at.
+
+Because here we only want to know if an AABB is completely on one side of a
+plane of the frustum, we can just test which side of a plane an extreme point
+of the AABB is on. For example, to determine if an AABB is completely on the
+opposite side of the plane that its normal is pointing to, we can test if the
+furthest point along the direction of the normal on the AABB is on that side.
+Considering a one dimenional instance:
+
+****************************************
+* -----A--------B---------C----------> *
+****************************************
+
+to determine if the segment AB is completely on the opposite side of C that its
+normal is pointing to, we can test if the furthest point along the direction of
+the normal on the segment AB, in this case B, is on that side.
+
+In 3D, finding a furthest point along a direction on AABB is easy:
+
+```
+furthest_point.x = direction.x > 0 ? aabb.max.x : aabb.min.x;
+furthest_point.y = direction.y > 0 ? aabb.max.y : aabb.min.y;
+furthest_point.z = direction.z > 0 ? aabb.max.z : aabb.min.z;
+```
+
+But to test every area in Quake 1's BSP tree, that's a lot of branches.  And I
+bet there weren't many CPUs in 1996 that had conditional move instruction.
+
+Instead, Quake 1 uses a trick to get the furthest point directly by pre-storing
+indices of AABB's min, max values based on each frustum plane's normal. For
+example, we define the furthest point along a normal as reject point and the
+furthest point along the opposite direction as accept point. And we combine
+AABB's min and max values into one array:
+
+```
+float minmax[6] = {aabb.min.x, aabb.min.y, aabb.min.z, 
+                   aabb.max.x, aabb.max.y, aabb.max.z};
+```
+
+now we calculate reject point and accept point's indices:
+
+```
+if (normal.x > 0.0f) {
+    /* minmax[3] is the furthest point along the normal on x axis */
+    reject_index.x = 3;
+    /* minmax[0] is the furthest point along opposite direction of 
+       the normal on x axis */
+    accept_index.x = 0;
+} else {
+    reject_index.x = 0;
+    accept_index.x = 3;
+}
+
+/* do the same for the other 2 dimensions 
+   ... */
+```
+
+we can then, instead of doing conditional tests for every AABB, use 
+`reject_index` and `accpet_index` to get the furthest points along the normal:
+
+```
+vector3 reject_point = {aabb.minmax[reject_index.x],
+                        aabb.minmax[reject_index.y],
+                        aabb.minmax[reject_index.z]};
+vector3 accept_point = {aabb.minmax[accept_index.x],
+                        aabb.minmax[accept_index.y],
+                        aabb.minmax[accept_index.z]};
+```
+
+2017 February 12
+
+
+
+<!-- Markdeep: -->
+<style class="fallback">body{visibility:hidden;white-space:pre;font-family:monospace}</style>
+<script src="markdeep.min.js"></script>
+<script src="https://casual-effects.com/markdeep/latest/markdeep.min.js"></script>
+<script>window.alreadyProcessedMarkdeep||(document.body.style.visibility="visible")</script>
